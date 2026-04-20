@@ -1,0 +1,42 @@
+name: Check Shared Sync
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  verify-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify every runtime copy matches shared
+        run: |
+          set -u
+          shopt -s nullglob
+          runtimes=(claude codex)
+          fail=0
+          found=0
+          for shared_dir in shared/*/references; do
+            found=1
+            skill_name="$(basename "$(dirname "$shared_dir")")"
+            for runtime in "${runtimes[@]}"; do
+              target="$runtime/skills/$skill_name/references"
+              if [[ ! -d "$target" ]]; then
+                echo "::error::missing runtime copy: $target (expected mirror of $shared_dir)"
+                fail=1
+                continue
+              fi
+              if ! diff -qr "$shared_dir" "$target"; then
+                echo "::error::drift detected: $target does not match $shared_dir"
+                fail=1
+              fi
+            done
+          done
+          if [[ "$found" -eq 0 ]]; then
+            echo "::error::no skills found under shared/*/references"
+            exit 1
+          fi
+          exit "$fail"
